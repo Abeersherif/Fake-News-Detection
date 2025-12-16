@@ -1,0 +1,16 @@
+# Virtual environments
+.venv/
+.venv310/
+
+# Data files
+*.csv
+
+# Outputs
+outputs/
+
+# Python cache
+__pycache__/
+*.pyc
+
+models/
+data/
