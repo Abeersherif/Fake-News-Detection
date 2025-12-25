@@ -1,4 +1,8 @@
 import os
+# Suppress TensorFlow INFO/WARNING logs
+os.environ["TF_ENABLE_ONEDNN_OPTS"] = "0"
+os.environ["TF_CPP_MIN_LOG_LEVEL"] = "2"
+
 import re
 import pickle
 import numpy as np

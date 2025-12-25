@@ -3,25 +3,11 @@ from typing import Tuple, List
 
 import tensorflow as tf
 from tensorflow.keras.callbacks import EarlyStopping, ModelCheckpoint
-from tensorflow.keras import mixed_precision
-
-# Enable Mixed Precision ONLY if GPU is present (Slow on CPU!)
-gpus = tf.config.list_physical_devices('GPU')
-if gpus:
-    try:
-        policy = mixed_precision.Policy('mixed_float16')
-        mixed_precision.set_global_policy(policy)
-        print(f"✅ GPU Detected: Enabled Mixed Precision (Turbo Mode).")
-    except Exception as e:
-        print(f"⚠️ GPU Mixed Precision Failed: {e}")
-else:
-    print("ℹ️ CPU Detected: Mixed Precision DISABLED (Avoiding slowdown).")
 
 # ---- BERT (PyTorch) ----
 import torch
 from torch.utils.data import Dataset, DataLoader
 from torch.optim import AdamW
-from torch.cuda.amp import autocast, GradScaler
 from transformers import BertTokenizerFast, BertForSequenceClassification
 from sklearn.model_selection import train_test_split
 from sklearn.metrics import classification_report
@@ -120,7 +106,7 @@ class BERTDataset(Dataset):
     def __init__(self, texts, labels, tokenizer, max_len: int = 160):
         """
         texts  : list[str]
-        labels : list[int]  (0 = Fake, 1 = Real)
+        labels : list[int]  (0 = Real, 1 = Fake)
         """
         self.texts = texts
         self.labels = labels
@@ -158,8 +144,8 @@ def train_bert_welfake(
     Train a BERT model on the WELFake dataset using DataManager.
 
     LABELS:
-      - 0 = Fake
-      - 1 = Real
+      - 0 = Real
+      - 1 = Fake
 
     Uses an 80/20 train/validation split (validation ≈ testing set).
 
@@ -181,7 +167,9 @@ def train_bert_welfake(
 
     print("Loading dataset with DataManager...")
     dm = DataManager()
-    df = dm.download_data()
+    # Use 50% data for BERT to match TF models (High Accuracy Mode), or whatever logic is preferred.
+    # Default in DataManager is 0.2, we boost it to 0.5 here.
+    df = dm.download_data(sample_frac=0.5)
 
     if "text" not in df.columns or "label" not in df.columns:
         raise ValueError("Expected columns 'text' and 'label' in WELFake dataset.")
@@ -194,17 +182,16 @@ def train_bert_welfake(
         print(f"Using ALL {len(df)} samples for BERT training.")
 
     texts = df["text"].astype(str).tolist()
-    labels = df["label"].astype(int).tolist()  # 0 = Fake, 1 = Real
+    labels = df["label"].astype(int).tolist()  # 0 = Real, 1 = Fake
 
-    # 80% train / 20% val split
+    # 80% train / 20% val split (stratified sampling ensures balanced real/fake distribution)
     X_train, X_val, y_train, y_val = train_test_split(
         texts,
         labels,
         test_size=0.2,
         random_state=42,
         stratify=labels,
-    )
-
+        )
     print(
         f"BERT split: {len(X_train)} samples for training (~80%) and "
         f"{len(X_val)} samples for validation/testing (~20%)."
@@ -214,7 +201,7 @@ def train_bert_welfake(
     tokenizer = BertTokenizerFast.from_pretrained(model_name)
     model = BertForSequenceClassification.from_pretrained(
         model_name,
-        num_labels=2,  # 0 = Fake, 1 = Real
+        num_labels=2,  # 0 = Real, 1 = Fake
     )
 
     if pretrained:
@@ -223,8 +210,9 @@ def train_bert_welfake(
             param.requires_grad = False
         print("[BERT] Embedding layer frozen for pretrained model.")
 
-    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-    print("Using device:", device)
+    # CPU-only training
+    device = "cpu"
+    print("Using device: CPU")
     model.to(device)
 
     # DataLoaders
@@ -238,7 +226,7 @@ def train_bert_welfake(
 
     # Optimizer & Scaler
     optimizer = AdamW(model.parameters(), lr=2e-5)
-    scaler = GradScaler()
+    # Scaler removed for CPU-only
 
     last_train_acc = 0.0
     last_val_acc = 0.0
@@ -263,20 +251,17 @@ def train_bert_welfake(
             attention_mask = batch["attention_mask"].to(device)
             labels_batch = batch["labels"].to(device)
 
-            # Automatic Mixed Precision
-            with autocast():
-                outputs = model(
-                    input_ids=input_ids,
-                    attention_mask=attention_mask,
-                    labels=labels_batch,
-                )
-                loss = outputs.loss
-                logits = outputs.logits
+            # Standard CPU Forward/Backward Pass
+            outputs = model(
+                input_ids=input_ids,
+                attention_mask=attention_mask,
+                labels=labels_batch,
+            )
+            loss = outputs.loss
+            logits = outputs.logits
 
-            # Scale loss
-            scaler.scale(loss).backward()
-            scaler.step(optimizer)
-            scaler.update()
+            loss.backward()
+            optimizer.step()
 
             total_loss += loss.item()
 
@@ -344,7 +329,7 @@ def train_bert_welfake(
             classification_report(
                 all_val_labels,
                 all_val_preds,
-                target_names=["Fake (0)", "Real (1)"],
+                target_names=["Real (0)", "Fake (1)"],
                 digits=4,
             )
         )

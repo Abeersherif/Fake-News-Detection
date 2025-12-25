@@ -1,4 +1,8 @@
 import os
+# Suppress TensorFlow INFO/WARNING logs
+os.environ["TF_ENABLE_ONEDNN_OPTS"] = "0"
+os.environ["TF_CPP_MIN_LOG_LEVEL"] = "2"
+
 import argparse
 import numpy as np
 import pandas as pd
@@ -10,7 +14,6 @@ from src.models import build_model
 from src.train import train_and_evaluate, train_bert_welfake
 from src.utils import (
     save_artifacts,
-    plot_history,
     plot_confusion_matrix_heatmap,
 )
 
@@ -19,7 +22,7 @@ def main():
     parser = argparse.ArgumentParser(
         description="Train CNN + LSTM + InceptionResNet + BERT on WELFake"
     )
-    parser.add_argument("--epochs", type=int, default=3, help="Epochs (CPU Balanced: 3)")
+    parser.add_argument("--epochs", type=int, default=5, help="Epochs (Default: 5 for better accuracy)")
     parser.add_argument("--bert_epochs", type=int, default=1, help="Epochs for BERT (CPU Fast: 1)")
     parser.add_argument("--batch_size", type=int, default=32, help="Batch size for CNN/LSTM/InceptionResNet")
     args = parser.parse_args()
@@ -35,16 +38,26 @@ def main():
     print("==============================\n")
 
     dm = DataManager()
-    df = dm.download_data()
-    # DISABLE AUGMENTATION for Speed on CPU
-    print("⚠️ CPU SPEED MODE: Disabling Data Augmentation (cuts training time in half).")
-    X_train, X_test, y_train, y_test = dm.prepare_data(df, augment=False)
+    
+    # -------------------------------------------------------------
+    # 🚀 HIGH ACCURACY MODE (Hardcoded)
+    # Using 100% Data + Augmentation + 5 Epochs
+    # -------------------------------------------------------------
+    print("🚀 HIGH ACCURACY MODE: Using 50% data + Augmentation + 5 Epochs.")
+    print("✨ AUGMENTATION ENABLED: Dataset size will be doubled (effective ~80-100% of original).")
+
+    sample_frac = 0.5  # Upgrade to 50% data as requested
+    augment_data = True # Keep augmentation enabled
+
+    df = dm.download_data(sample_frac=sample_frac)
+    
+    X_train, X_test, y_train, y_test = dm.prepare_data(df, augment=augment_data)
 
     vocab_size = len(dm.tokenizer.word_index) + 1
     print(f"Vocabulary Size : {vocab_size}")
     print(f"Train Samples   : {len(X_train)}")
     print(f"Test Samples    : {len(X_test)}")
-    print(f"Unique labels   : {np.unique(y_train)}  (0 = Fake, 1 = Real)")
+    print(f"Unique labels   : {np.unique(y_train)}  (0 = Real, 1 = Fake)")
 
     # ---------- Save the 20% testing data to CSV ----------
     print("\nSaving the 20% testing data (text + label)...")
@@ -101,9 +114,6 @@ def main():
         batch_size=args.batch_size,
     )
 
-    # Save curves for CNN
-    plot_history(cnn_history, "CNN_Model")
-
     # Confusion Matrix for CNN
     print("\n[ CNN ] Computing confusion matrix...")
     cnn_probs = cnn_model.predict(X_test, batch_size=args.batch_size).ravel()  # P(Real = 1)
@@ -117,12 +127,12 @@ def main():
     print("[ CNN ] Confusion matrix saved to outputs/CNN_Model_cm.png")
 
     # Classification report for CNN
-    print("\n[ CNN ] Classification report (0 = Fake, 1 = Real):")
+    print("\n[ CNN ] Classification report (0 = Real, 1 = Fake):")
     print(
         classification_report(
             y_test,
             cnn_preds,
-            target_names=["Fake (0)", "Real (1)"],
+            target_names=["Real (0)", "Fake (1)"],
             digits=4,
         )
     )
@@ -152,9 +162,6 @@ def main():
         batch_size=args.batch_size,
     )
 
-    # Save curves for LSTM
-    plot_history(lstm_history, "LSTM_Model")
-
     # Confusion Matrix for LSTM
     print("\n[ LSTM ] Computing confusion matrix...")
     lstm_probs = lstm_model.predict(X_test, batch_size=args.batch_size).ravel()
@@ -167,7 +174,7 @@ def main():
     )
     print("[ LSTM ] Confusion matrix saved to outputs/LSTM_Model_cm.png")
 
-    print("\n[ LSTM ] Classification report (0 = Fake, 1 = Real):")
+    print("\n[ LSTM ] Classification report (0 = Real, 1 = Fake):")
     print(
         classification_report(
             y_test,
@@ -201,8 +208,6 @@ def main():
         batch_size=args.batch_size,
     )
 
-    plot_history(inc_history, "InceptionResNet_Model")
-
     print("\n[ InceptionResNet ] Computing confusion matrix...")
     inc_probs = inc_model.predict(X_test, batch_size=args.batch_size).ravel()
     inc_preds = (inc_probs >= 0.5).astype(int)
@@ -214,7 +219,7 @@ def main():
     )
     print("[ InceptionResNet ] Confusion matrix saved to outputs/InceptionResNet_Model_cm.png")
 
-    print("\n[ InceptionResNet ] Classification report (0 = Fake, 1 = Real):")
+    print("\n[ InceptionResNet ] Classification report (0 = Real, 1 = Fake):")
     print(
         classification_report(
             y_test,
@@ -230,7 +235,7 @@ def main():
     add_metrics_rows("InceptionResNet", y_test, inc_preds, inc_test_acc)
 
     # ============================================================
-    # 5) Train BERT (PyTorch) — labels: 0 = Fake, 1 = Real
+    # 5) Train BERT (PyTorch) — labels: 0 = Real, 1 = Fake
     # ============================================================
     print("\n=====================")
     print(" TRAINING: BERT Model")

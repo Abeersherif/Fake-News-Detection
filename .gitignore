@@ -1,16 +1,17 @@
-# Virtual environments
-.venv/
-.venv310/
-
-# Data files
-*.csv
-
-# Outputs
-outputs/
-
-# Python cache
+# Python
 __pycache__/
-*.pyc
+*.py[cod]
+venv/
+.env
 
+# Large Data & Models (Too big for GitHub)
+WELFake_Dataset.csv
 models/
-data/
+outputs/
+*.h5
+*.keras
+*.pt
+
+# OS
+.DS_Store
+Thumbs.db
