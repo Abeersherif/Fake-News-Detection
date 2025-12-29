@@ -26,11 +26,16 @@ st.set_page_config(page_title="Fake News Detector", page_icon="📰", layout="wi
 st.title("📰 Fake News Detection System (CNN / LSTM / InceptionResNet / BERT)")
 st.caption("✅ Optimized Models Loaded (Mixed Precision / Balanced Training)")
 
-st.write("🔍 Current working directory:", os.getcwd())
-if os.path.exists("models"):
-    st.write("📁 Files inside `models/`:", os.listdir("models"))
-else:
-    st.write("❌ models/ folder NOT FOUND!")
+with st.sidebar:
+    st.header("⚙️ Debug & System Logs")
+    st.write("🔍 **CWD:**", os.getcwd())
+    if os.path.exists("models"):
+        with st.expander("📁 Files inside `models/`"):
+            st.write(os.listdir("models"))
+    else:
+        st.error("❌ models/ folder NOT FOUND!")
+    st.markdown("---")
+    st.write("📡 **Loading Logs:**")
 
 ###############################################################
 # TEXT CLEANING (same as training)
@@ -85,7 +90,7 @@ def load_keras_model(
 
     # If tokenizer is missing, skip loading
     if not os.path.exists(tokenizer_path):
-        st.write(f"❌ Tokenizer not found at: {tokenizer_path}")
+        st.sidebar.error(f"❌ Tokenizer not found at: {tokenizer_path}")
         return None, None
 
     # Try loading models
@@ -94,19 +99,19 @@ def load_keras_model(
         if not os.path.exists(path):
             continue
         try:
-            st.write(f"🔎 Trying to load Keras model from: {path}")
+            st.sidebar.write(f"🔎 Trying to load Keras model from: {path}")
             model = tf.keras.models.load_model(path)
             with open(tokenizer_path, "rb") as f:
                 tokenizer = pickle.load(f)
-            st.write(f"✅ Loaded Keras model from: {path}")
+            st.sidebar.write(f"✅ Loaded Keras model from: {path}")
             return model, tokenizer
         except Exception as e:
-            st.write(f"⚠️ Failed loading {path}: {e}")
+            st.sidebar.write(f"⚠️ Failed loading {path}: {e}")
             last_error = e
 
-    st.write("❌ Could not load any Keras model candidate.")
+    st.sidebar.write("❌ Could not load any Keras model candidate.")
     if last_error:
-        st.write(f"Last error: {last_error}")
+        st.sidebar.write(f"Last error: {last_error}")
     return None, None
 
 
@@ -119,13 +124,13 @@ def load_bert_model():
     pt_path = "models/welfake_bert_model.pt"
 
     if not (os.path.exists(model_dir) and os.path.exists(tok_dir)):
-        st.write("❌ BERT directories not found.")
+        st.sidebar.write("❌ BERT directories not found.")
         return None, None
 
-    st.write("🔎 Loading BERT tokenizer from:", tok_dir)
+    st.sidebar.write("🔎 Loading BERT tokenizer from:", tok_dir)
     tokenizer = BertTokenizerFast.from_pretrained(tok_dir)
 
-    st.write("🔎 Loading BERT base model from:", model_dir)
+    st.sidebar.write("🔎 Loading BERT base model from:", model_dir)
     model = BertForSequenceClassification.from_pretrained(
         model_dir,
         torch_dtype=torch.float32,
@@ -133,14 +138,14 @@ def load_bert_model():
     model.to("cpu")
 
     if os.path.exists(pt_path):
-        st.write("🔎 Loading fine-tuned BERT weights from:", pt_path)
+        st.sidebar.write("🔎 Loading fine-tuned BERT weights from:", pt_path)
         state = torch.load(pt_path, map_location="cpu")
         model.load_state_dict(state)
     else:
-        st.write("⚠️ Fine-tuned weights not found, using base model only.")
+        st.sidebar.write("⚠️ Fine-tuned weights not found, using base model only.")
 
     model.eval()
-    st.write("✅ BERT model ready on CPU.")
+    st.sidebar.write("✅ BERT model ready on CPU.")
     return model, tokenizer
 
 
@@ -254,51 +259,50 @@ if model_choice in ["InceptionResNet", "🔮 Compare All Models"]:
         model_kind="inception_resnet",
     )
 
-# Display model loading status
-if model_choice == "CNN":
-    if cnn_model is None:
-        st.error("⚠️ CNN model could not be loaded. Check models folder & filenames.")
-        st.stop()
-    else:
-        st.success("✅ CNN model loaded.")
+# Display model loading status in Sidebar
+with st.sidebar:
+    st.markdown("---")
+    st.write("📊 **Model Status:**")
+    if model_choice == "CNN":
+        if cnn_model is None:
+            st.error("⚠️ CNN model could not be loaded.")
+            st.stop()
+        else:
+            st.success("✅ CNN model loaded.")
 
-elif model_choice == "LSTM":
-    if lstm_model is None:
-        st.error("⚠️ LSTM model could not be loaded. Check models folder & filenames.")
-        st.stop()
-    else:
-        st.success("✅ LSTM model loaded.")
+    elif model_choice == "LSTM":
+        if lstm_model is None:
+            st.error("⚠️ LSTM model could not be loaded.")
+            st.stop()
+        else:
+            st.success("✅ LSTM model loaded.")
 
-elif model_choice == "BERT":
-    if bert_model is None:
-        st.error("⚠️ BERT model could not be loaded. Check folders & weights.")
-        st.stop()
-    else:
-        st.success("✅ BERT model loaded.")
+    elif model_choice == "BERT":
+        if bert_model is None:
+            st.error("⚠️ BERT model could not be loaded.")
+            st.stop()
+        else:
+            st.success("✅ BERT model loaded.")
 
-elif model_choice == "InceptionResNet":
-    if inc_model is None:
-        st.error("⚠️ InceptionResNet model could not be loaded. Check models folder & filenames.")
-        st.stop()
-    else:
-        st.success("✅ InceptionResNet model loaded.")
+    elif model_choice == "InceptionResNet":
+        if inc_model is None:
+            st.error("⚠️ InceptionResNet (InceptionResNet) model could not be loaded.")
+            st.stop()
+        else:
+            st.success("✅ InceptionResNet model loaded.")
 
-else:  # Compare all
-    available = []
-    if cnn_model is not None:
-        available.append("CNN")
-    if lstm_model is not None:
-        available.append("LSTM")
-    if bert_model is not None:
-        available.append("BERT")
-    if inc_model is not None:
-        available.append("InceptionResNet")
+    else:  # Compare all
+        available = []
+        if cnn_model is not None: available.append("CNN")
+        if lstm_model is not None: available.append("LSTM")
+        if bert_model is not None: available.append("BERT")
+        if inc_model is not None: available.append("InceptionResNet")
 
-    if not available:
-        st.error("⚠️ No models could be loaded. Please check your models directory.")
-        st.stop()
-    else:
-        st.success(f"✅ Loaded models: {', '.join(available)}")
+        if not available:
+            st.error("⚠️ No models could be loaded.")
+            st.stop()
+        else:
+            st.success(f"✅ Loaded: {', '.join(available)}")
 
 
 ###############################################################

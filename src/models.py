@@ -5,12 +5,6 @@ from tensorflow.keras import layers, models
 
 
 def _make_input(max_len: int | None = None):
-    """
-    Helper to create the Input layer.
-
-    If max_len is None -> variable-length sequences.
-    If max_len is int  -> fixed-length sequences (e.g. 200).
-    """
     if max_len is None:
         return layers.Input(shape=(None,), dtype="int32", name="input_ids")
     else:
@@ -27,20 +21,15 @@ def build_cnn_model(
     filters: int = 128,
     kernel_size: int = 5,
     dense_units: int = 64,
-    pretrained: bool = False,  # Add flag to control freezing
+    pretrained: bool = False,
 ) -> tf.keras.Model:
-    """
-    Simple 1D CNN for text classification (binary: fake / real).
-    Embedding layer is frozen (non-trainable) if pretrained is True.
-    """
     inputs = _make_input(max_len)
 
-    # If pretrained, freeze embedding weights
     x = layers.Embedding(
         input_dim=vocab_size,
         output_dim=embedding_dim,
         name="embedding",
-        trainable=not pretrained,  # Freeze embedding if pretrained
+        trainable=not pretrained,
     )(inputs)
 
     x = layers.Conv1D(
@@ -81,20 +70,15 @@ def build_lstm_model(
     embedding_dim: int = 128,
     lstm_units: int = 128,
     dense_units: int = 64,
-    pretrained: bool = False,  # Add flag to control freezing
+    pretrained: bool = False,
 ) -> tf.keras.Model:
-    """
-    Simple LSTM model for text classification (binary: fake / real).
-    Embedding layer is frozen (non-trainable) if pretrained is True.
-    """
     inputs = _make_input(max_len)
 
-    # If pretrained, freeze embedding weights
     x = layers.Embedding(
         input_dim=vocab_size,
         output_dim=embedding_dim,
         name="embedding",
-        trainable=not pretrained,  # Freeze embedding if pretrained
+        trainable=not pretrained,
     )(inputs)
 
     x = layers.LSTM(lstm_units, return_sequences=False, name="lstm")(x)
@@ -115,20 +99,14 @@ def build_inception_resnet_model(
     vocab_size: int,
     max_len: int | None = None,
     embedding_dim: int = 128,
-    pretrained: bool = False,  # Add flag to control freezing
+    pretrained: bool = False,
 ) -> tf.keras.Model:
-    """
-    Inception-like parallel Conv1D branches + Residual connection.
-    Embedding layer is frozen (non-trainable) if pretrained is True.
-    """
     inputs = _make_input(max_len)
-
-    # If pretrained, freeze embedding weights
     x = layers.Embedding(
         input_dim=vocab_size,
         output_dim=embedding_dim,
         name="embedding",
-        trainable=not pretrained,  # Freeze embedding if pretrained
+        trainable=not pretrained,
     )(inputs)
 
     # Parallel branches
@@ -157,7 +135,7 @@ def build_inception_resnet_model(
     inception = layers.Concatenate(
         axis=-1,
         name="inception_concat",
-    )([b1, b2, b3])  # shape: (..., 64*3)
+    )([b1, b2, b3])
 
     # Residual path (1x1 conv to match channels)
     res = layers.Conv1D(
@@ -189,14 +167,8 @@ def build_model(
     vocab_size: int,
     max_len: int | None = None,
     embed_dim: int = 128,
-    pretrained: bool = False,  # Add flag to control frozen layers
+    pretrained: bool = False,
 ) -> tf.keras.Model:
-    """
-    Factory function used by main.py
-
-    model_type: "CNN", "LSTM", or "INCEPTION_RESNET"
-    pretrained: Whether to freeze early layers of the model.
-    """
     model_type_upper = model_type.upper()
 
     if model_type_upper == "CNN":

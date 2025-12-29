@@ -4,7 +4,6 @@ from typing import Tuple, List
 import tensorflow as tf
 from tensorflow.keras.callbacks import EarlyStopping, ModelCheckpoint
 
-# ---- BERT (PyTorch) ----
 import torch
 from torch.utils.data import Dataset, DataLoader
 from torch.optim import AdamW
@@ -13,12 +12,9 @@ from sklearn.model_selection import train_test_split
 from sklearn.metrics import classification_report
 
 from src.data_manager import DataManager
-from src.utils import plot_confusion_matrix_heatmap  # 🔹 For confusion matrix of BERT
+from src.utils import plot_confusion_matrix_heatmap
 
 
-# ============================================================
-# 1) CNN / LSTM / Inception-Residual Training (TensorFlow / Keras)
-# ============================================================
 def train_and_evaluate(
     model: tf.keras.Model,
     X_train,
@@ -29,23 +25,12 @@ def train_and_evaluate(
     epochs: int = 5,
     batch_size: int = 32,
 ) -> Tuple[tf.keras.callbacks.History, float, float]:
-    """
-    Compile + train model, then evaluate on test set.
-
-    Returns:
-        history   : Keras History object
-        train_acc : final training accuracy (last epoch)
-        test_acc  : accuracy on the held-out test set
-    """
-
-    # 1) Compile
     model.compile(
         optimizer="adam",
         loss="binary_crossentropy",
         metrics=["accuracy"],
     )
 
-    # 2) Callbacks (early stopping + best checkpoint per model)
     os.makedirs("models", exist_ok=True)
     checkpoint_path = os.path.join("models", f"{model_name}_best.keras")
 
@@ -75,7 +60,6 @@ def train_and_evaluate(
         verbose=1,
     )
 
-    # 3) Final training accuracy from history
     train_acc_list = history.history.get("accuracy", [])
     if len(train_acc_list) > 0:
         train_acc = float(train_acc_list[-1])
@@ -89,25 +73,17 @@ def train_and_evaluate(
         final_val_acc = float("nan")
 
     print(f"[{model_name}] Final Training Accuracy (last epoch): {train_acc:.4f}")
-    if not (final_val_acc != final_val_acc):  # NaN check
+    if not (final_val_acc != final_val_acc):
         print(f"[{model_name}] Final Validation Accuracy (last epoch): {final_val_acc:.4f}")
 
-    # 4) Evaluate on the held-out test set
     test_loss, test_acc = model.evaluate(X_test, y_test, verbose=0)
     print(f"[{model_name}] Test Loss: {test_loss:.4f} | Test Accuracy: {test_acc:.4f}")
 
     return history, train_acc, test_acc
 
 
-# ============================================================
-# 2) BERT Dataset (PyTorch)
-# ============================================================
 class BERTDataset(Dataset):
     def __init__(self, texts, labels, tokenizer, max_len: int = 160):
-        """
-        texts  : list[str]
-        labels : list[int]  (0 = Real, 1 = Fake)
-        """
         self.texts = texts
         self.labels = labels
         self.tokenizer = tokenizer
@@ -129,52 +105,21 @@ class BERTDataset(Dataset):
         return item
 
 
-# ============================================================
-# 3) BERT Training Pipeline (PyTorch) + Confusion Matrix (LAST epoch only)
-# ============================================================
 def train_bert_welfake(
     max_samples: int | None = None,
     model_name: str = "bert-base-uncased",
     max_len: int = 160,
     batch_size: int = 8,
     epochs: int = 2,
-    pretrained: bool = False,  # Freeze early layers if pretrained
+    pretrained: bool = False,
 ):
-    """
-    Train a BERT model on the WELFake dataset using DataManager.
-
-    LABELS:
-      - 0 = Real
-      - 1 = Fake
-
-    Uses an 80/20 train/validation split (validation ≈ testing set).
-
-    If max_samples is None -> use ALL samples.
-    If max_samples > 0    -> sample that many rows for faster debugging.
-
-    Saves:
-      - models/welfake_bert_model_dir
-      - models/welfake_bert_tokenizer_dir
-      - models/welfake_bert_model.pt
-      - outputs/BERT_Model_cm.png (Confusion Matrix for LAST epoch only)
-
-    Returns:
-      model, tokenizer,
-      final_train_acc, final_val_acc,
-      train_size, val_size,
-      last_val_labels (list[int]), last_val_preds (list[int])
-    """
-
     print("Loading dataset with DataManager...")
     dm = DataManager()
-    # Use 50% data for BERT to match TF models (High Accuracy Mode), or whatever logic is preferred.
-    # Default in DataManager is 0.2, we boost it to 0.5 here.
     df = dm.download_data(sample_frac=0.5)
 
     if "text" not in df.columns or "label" not in df.columns:
         raise ValueError("Expected columns 'text' and 'label' in WELFake dataset.")
 
-    # If max_samples is None → use all data
     if max_samples is not None and max_samples > 0 and len(df) > max_samples:
         df = df.sample(n=max_samples, random_state=42).reset_index(drop=True)
         print(f"Using a subset of {max_samples} samples for BERT training.")
@@ -182,9 +127,8 @@ def train_bert_welfake(
         print(f"Using ALL {len(df)} samples for BERT training.")
 
     texts = df["text"].astype(str).tolist()
-    labels = df["label"].astype(int).tolist()  # 0 = Real, 1 = Fake
+    labels = df["label"].astype(int).tolist()
 
-    # 80% train / 20% val split (stratified sampling ensures balanced real/fake distribution)
     X_train, X_val, y_train, y_val = train_test_split(
         texts,
         labels,
@@ -201,21 +145,18 @@ def train_bert_welfake(
     tokenizer = BertTokenizerFast.from_pretrained(model_name)
     model = BertForSequenceClassification.from_pretrained(
         model_name,
-        num_labels=2,  # 0 = Real, 1 = Fake
+        num_labels=2,
     )
 
     if pretrained:
-        # Freeze early layers (Embedding, etc.)
         for param in model.embeddings.parameters():
             param.requires_grad = False
         print("[BERT] Embedding layer frozen for pretrained model.")
 
-    # CPU-only training
     device = "cpu"
     print("Using device: CPU")
     model.to(device)
 
-    # DataLoaders
     train_dataset = BERTDataset(X_train, y_train, tokenizer, max_len=max_len)
     val_dataset = BERTDataset(X_val, y_val, tokenizer, max_len=max_len)
 
@@ -224,9 +165,7 @@ def train_bert_welfake(
 
     print(f"Train batches: {len(train_loader)}, Val batches: {len(val_loader)}")
 
-    # Optimizer & Scaler
     optimizer = AdamW(model.parameters(), lr=2e-5)
-    # Scaler removed for CPU-only
 
     last_train_acc = 0.0
     last_val_acc = 0.0
@@ -251,7 +190,6 @@ def train_bert_welfake(
             attention_mask = batch["attention_mask"].to(device)
             labels_batch = batch["labels"].to(device)
 
-            # Standard CPU Forward/Backward Pass
             outputs = model(
                 input_ids=input_ids,
                 attention_mask=attention_mask,
@@ -265,7 +203,6 @@ def train_bert_welfake(
 
             total_loss += loss.item()
 
-            # Training accuracy tracking
             preds = torch.argmax(logits, dim=-1)
             train_correct += (preds == labels_batch).sum().item()
             train_total += labels_batch.size(0)
@@ -277,9 +214,6 @@ def train_bert_welfake(
         train_acc = train_correct / train_total if train_total > 0 else 0.0
         last_train_acc = train_acc
 
-        # ============================
-        # Validation
-        # ============================
         model.eval()
         val_loss = 0.0
         correct = 0
@@ -314,7 +248,6 @@ def train_bert_welfake(
         val_acc = correct / total if total > 0 else 0.0
         last_val_acc = val_acc
 
-        # Save last epoch labels/preds for metrics & confusion matrix
         last_val_labels = all_val_labels
         last_val_preds = all_val_preds
 
@@ -340,9 +273,6 @@ def train_bert_welfake(
         f"Final Validation/Test Accuracy: {last_val_acc:.4f}"
     )
 
-    # ============================
-    # Confusion Matrix (LAST epoch only)
-    # ============================
     os.makedirs("outputs", exist_ok=True)
     plot_confusion_matrix_heatmap(
         y_true=last_val_labels,
@@ -352,9 +282,6 @@ def train_bert_welfake(
     )
     print("[BERT] Final confusion matrix saved to outputs/BERT_Model_cm.png")
 
-    # ============================
-    # 6) Save model + tokenizer
-    # ============================
     os.makedirs("models", exist_ok=True)
 
     model_dir = "models/welfake_bert_model_dir"

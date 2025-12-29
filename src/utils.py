@@ -12,15 +12,7 @@ def plot_confusion_matrix_heatmap(
     save_dir: str = "outputs",
     labels: tuple[str, str] = ("Fake", "Real"),
 ) -> None:
-    """
-    Plot and save confusion matrix heatmap.
-
-    Assumes:
-      0 = Real
-      1 = Fake
-
-    We fix the label order as [0, 1] to keep mapping consistent.
-    """
+   
     if not os.path.exists(save_dir):
         os.makedirs(save_dir)
 
@@ -47,13 +39,6 @@ def plot_confusion_matrix_heatmap(
 
 
 def save_artifacts(model, tokenizer, model_name: str = "best_model") -> None:
-    """
-    Save trained Keras model and tokenizer under models/ folder.
-
-    Example:
-      model_name='cnn_model'  →  models/cnn_model.h5
-      tokenizer               →  models/tokenizer.pickle  (shared)
-    """
     os.makedirs("models", exist_ok=True)
 
     model_path = os.path.join("models", f"{model_name}.h5")

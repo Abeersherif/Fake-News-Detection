@@ -1,7 +1,6 @@
 import os
 import re
 import random
-import requests
 import numpy as np
 import pandas as pd
 
@@ -22,67 +21,33 @@ class DataManager:
     def download_data(
         self,
         local_path: str = "WELFake_Dataset.csv",
-        sample_frac: float = 0.2,
-    ) -> pd.DataFrame:
-        """
-        1) If local_path (WELFake_Dataset.csv) exists in project root → use it.
-        2) Else if save_path (data/welfake_dataset.csv) exists → use it.
-        3) Else -> Raise Error (No valid file found).
-        """
-        # 1) Local file in project root
+        sample_frac: float = 0.5,
+    ) -> pd.DataFrame:       
         if os.path.exists(local_path):
             print(f" Using local dataset: {local_path}")
             df = pd.read_csv(local_path)
             print(f"⚠️ Data sampling: Using {sample_frac*100}% data...")
             df = df.sample(frac=sample_frac, random_state=42).reset_index(drop=True)
             return self._normalize_columns(df)
-
-        # 2) File in data/ folder
-        if os.path.exists(save_path):
-            print(f" Using dataset from: {save_path}")
-            df = pd.read_csv(save_path)
-            print(f"⚠️ Data sampling: Using {sample_frac*100}% data...")
-            df = df.sample(frac=sample_frac, random_state=42).reset_index(drop=True)
-            return self._normalize_columns(df)
-
-        # 3) If neither exists, RAISE ERROR (No internet download allowed)
         raise FileNotFoundError(
-            f"❌ Could not find dataset at '{local_path}' or '{save_path}'. "
-            "Please place the 'WELFake_Dataset.csv' file in the project folder."
+            f"❌ Could not find dataset at '{local_path}'. "
+            "Please ensure 'WELFake_Dataset.csv' is in the project root."
         )
 
     def _normalize_columns(self, df: pd.DataFrame) -> pd.DataFrame:
-        """
-        Ensure we always have: 'title', 'text', 'label'
-        and drop the useless index column if present.
-        """
         # Drop unnamed index column if it exists
         for col in df.columns:
             if "unnamed" in col.lower():
                 df = df.drop(columns=[col])
 
-        # Unify possible column casings
-        col_map = {c.lower(): c for c in df.columns}
-        # We expect these logical columns
-        needed = ["title", "text", "label"]
+        # Normalize column names to lowercase
+        df.columns = df.columns.str.lower()
 
-        for name in needed:
-            if name not in col_map:
-                # If completely missing, create empty title / raise for others
-                if name == "title":
-                    df["title"] = ""
-                else:
-                    raise ValueError(f"Required column '{name}' not found in dataset.")
-        # Rename to lowercase canonical form
-        df = df.rename(
-            columns={
-                col_map.get("title", "title"): "title",
-                col_map.get("text", "text"): "text",
-                col_map.get("label", "label"): "label",
-            }
-        )
+        # Check required columns exist
+        if "text" not in df.columns or "label" not in df.columns:
+            raise ValueError("Dataset must contain 'text' and 'label' columns.")
 
-        # Ensure label numeric
+        # Ensure label is numeric
         df["label"] = df["label"].astype(int)
         return df
 
@@ -97,7 +62,6 @@ class DataManager:
         return text.strip()
 
     def augment_text(self, text: str) -> str:
-        """Randomly deletes words for augmentation."""
         words = text.split()
         if len(words) > 5:
             return " ".join([w for w in words if random.random() > 0.1])
@@ -106,14 +70,7 @@ class DataManager:
     # --------------------------------------------------
     # 3) Prepare train/test data
     # --------------------------------------------------
-    def prepare_data(self, df: pd.DataFrame, augment: bool = False):
-        """
-        - Clean text
-        - Optional augmentation
-        - Map labels if needed
-        - Tokenize + pad
-        - Split train/test
-        """
+    def prepare_data(self, df: pd.DataFrame, augment: bool = True):
         # Ensure required columns exist
         if not {"text", "label"}.issubset(df.columns):
             raise ValueError("Dataframe must contain 'text' and 'label' columns.")
